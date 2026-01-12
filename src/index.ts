@@ -31,7 +31,7 @@ export async function mergeCoverage(options: MergeOptions): Promise<MergeResult>
   const {
     inputDirs,
     outputDir,
-    normalize = true,
+    normalize = false,
     reporters = ['json', 'lcov', 'html'],
   } = options
 
@@ -67,8 +67,11 @@ export async function mergeCoverage(options: MergeOptions): Promise<MergeResult>
     console.log(`Normalized: removed ${totalImportsRemoved} import(s), ${totalDirectivesRemoved} directive(s)`)
   }
 
-  // Smart merge: use source with fewer items as baseline
-  const mergedData = smartMergeCoverage(coverageMaps)
+  // Smart merge coverage maps
+  // When normalize is false (default): preferUnion=true, use "more items wins" strategy
+  // When normalize is true: preferUnion=false, use "fewer items wins" strategy (no directive inflation)
+  const preferUnion = !normalize
+  const mergedData = smartMergeCoverage(coverageMaps, preferUnion)
   const mergedMap = libCoverage.createCoverageMap(mergedData)
 
   // Create output directory

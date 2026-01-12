@@ -1,6 +1,10 @@
 # vitest-coverage-merge
 
-Merge Vitest coverage from unit tests (jsdom) and browser component tests with automatic normalization.
+Merge Vitest coverage from unit tests (jsdom) and browser component tests.
+
+> **📝 UPDATE (January 2025):**
+>
+> As of v0.2.0, **normalization is now OFF by default**. Use `--normalize` if you need to strip import statements and directives.
 
 ## The Problem
 
@@ -15,7 +19,7 @@ This makes it impossible to accurately merge coverage without normalization.
 
 ## The Solution
 
-`vitest-coverage-merge` automatically strips import statements and Next.js directives (`'use client'`, `'use server'`) from coverage data before merging, ensuring consistent statement counts across all sources.
+`vitest-coverage-merge` provides smart merging of coverage data. When you encounter statement count mismatches, you can use the `--normalize` flag to strip import statements and Next.js directives (`'use client'`, `'use server'`) before merging.
 
 ## Installation
 
@@ -33,6 +37,9 @@ npx vitest-coverage-merge coverage/unit coverage/component -o coverage/merged
 
 # Merge multiple sources
 npx vitest-coverage-merge coverage/unit coverage/component coverage/e2e -o coverage/all
+
+# Merge with normalization (strips imports/directives)
+npx vitest-coverage-merge coverage/unit coverage/component -o coverage/merged --normalize
 ```
 
 ### Options
@@ -46,7 +53,7 @@ Arguments:
 
 Options:
   -o, --output     Output directory for merged coverage (required)
-  --no-normalize   Skip import/directive stripping (not recommended)
+  --normalize      Strip import statements and directives before merging
   -h, --help       Show help
   -v, --version    Show version
 ```
@@ -60,7 +67,7 @@ import { mergeCoverage, normalizeCoverage } from 'vitest-coverage-merge'
 const result = await mergeCoverage({
   inputDirs: ['coverage/unit', 'coverage/component'],
   outputDir: 'coverage/merged',
-  normalize: true, // default
+  normalize: false, // default (set to true to strip imports/directives)
   reporters: ['json', 'lcov', 'html'], // default
 })
 
@@ -136,13 +143,16 @@ The tool generates:
 ## How It Works
 
 1. **Load** coverage-final.json from each input directory
-2. **Normalize** by stripping:
+2. **Normalize** (optional, with `--normalize` flag) by stripping:
    - ESM import statements (`import ... from '...'`)
    - React/Next.js directives (`'use client'`, `'use server'`) - if present
-3. **Smart merge** - selects the best coverage structure (browser tests preferred) and merges execution counts
-4. **Generate** reports (JSON, LCOV, HTML)
+3. **Smart merge** using one of two strategies:
+   - **Default (no `--normalize`)**: "More items wins" - prefers source with more coverage items, giving you the union of all structures
+   - **With `--normalize`**: "Fewer items wins" - prefers sources without directive statements (browser-style coverage)
+4. **Merge execution counts** using max strategy (takes highest count for each item)
+5. **Generate** reports (JSON, LCOV, HTML)
 
-> **Note**: This tool works with any ESM-based Vitest project (React, Vue, Svelte, vanilla JS/TS, etc.). The React/Next.js directive stripping only applies if those directives are present in your codebase - for non-React projects, it simply has no effect. CommonJS `require()` statements are not stripped because V8 treats them consistently in both jsdom and browser environments.
+> **Note**: This tool works with any ESM-based Vitest project (React, Vue, Svelte, vanilla JS/TS, etc.). The React/Next.js directive stripping only applies if those directives are present in your codebase - for non-React projects, it simply has no effect.
 
 ## Why Not Use Vitest's Built-in Merge?
 

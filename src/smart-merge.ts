@@ -71,16 +71,22 @@ function buildLookups(data: FileCoverageData): CoverageLookups {
 
 /**
  * Select the best source coverage for structure.
- * Prefers coverage WITHOUT L1:0 directive statements (browser/E2E-style).
- * Browser coverage is more accurate because it doesn't count non-executable directives.
+ *
+ * When preferUnion is true (default):
+ *   - Prefer coverage WITH MORE items (includes imports and directives)
+ *   - This gives you the union of all statement structures
+ *
+ * When preferUnion is false (--normalize mode):
+ *   - Prefer coverage WITHOUT L1:0 directive statements (browser/E2E-style)
+ *   - Browser coverage is more accurate because it doesn't count non-executable directives
  *
  * Rules:
  * 1. Filter out sources with no coverage data (0 items)
- * 2. Among remaining sources, prefer those without L1:0 directives
- * 3. Among sources without directives, prefer the LAST one (component tests by convention)
+ * 2. If preferUnion: prefer source with MORE items, prefer LAST when equal
+ * 3. If !preferUnion: prefer source without L1:0 directives, then prefer LAST one
  * 4. If all sources have directives, pick the one with fewer items
  */
-function selectBestSource(coverages: FileCoverageData[]): FileCoverageData {
+function selectBestSource(coverages: FileCoverageData[], preferUnion: boolean = true): FileCoverageData {
   const getTotalItems = (cov: FileCoverageData): number => {
     return (
       Object.keys(cov.statementMap || {}).length +
@@ -103,6 +109,22 @@ function selectBestSource(coverages: FileCoverageData[]): FileCoverageData {
     return nonEmptyWithIndex[0].cov
   }
 
+  // If preferUnion is true (default), pick the source with MORE items
+  // This includes imports and directives from all sources
+  // When item counts are equal, prefer the LAST source
+  if (preferUnion) {
+    return nonEmptyWithIndex.reduce((best, current) => {
+      const currentItems = getTotalItems(current.cov)
+      const bestItems = getTotalItems(best.cov)
+      // Prefer more items, or if equal, prefer later source (higher index)
+      if (currentItems > bestItems || (currentItems === bestItems && current.idx > best.idx)) {
+        return current
+      }
+      return best
+    }).cov
+  }
+
+  // preferUnion is false (--normalize mode): prefer source without directives
   // Check which coverages have L1:0 directive statements
   const withDirective: { cov: FileCoverageData; idx: number }[] = []
   const withoutDirective: { cov: FileCoverageData; idx: number }[] = []
@@ -139,10 +161,12 @@ function selectBestSource(coverages: FileCoverageData[]): FileCoverageData {
 
 /**
  * Smart merge of multiple file coverages.
- * Uses the source with fewer items as the baseline structure,
- * then merges execution counts from all sources.
+ * Uses the best source as baseline structure, then merges execution counts from all sources.
+ *
+ * @param coverages - Array of file coverages to merge
+ * @param preferUnion - If true (default), prefer source with more items; if false, prefer source without directives
  */
-function mergeFileCoverages(coverages: FileCoverageData[]): FileCoverageData {
+function mergeFileCoverages(coverages: FileCoverageData[], preferUnion: boolean = true): FileCoverageData {
   if (coverages.length === 0) {
     throw new Error('No coverages to merge')
   }
@@ -150,8 +174,8 @@ function mergeFileCoverages(coverages: FileCoverageData[]): FileCoverageData {
     return JSON.parse(JSON.stringify(coverages[0]))
   }
 
-  // Select best structure (fewer items)
-  const bestSource = selectBestSource(coverages)
+  // Select best structure based on preferUnion setting
+  const bestSource = selectBestSource(coverages, preferUnion)
 
   // Build lookup maps for all coverages
   const allLookups = coverages.map(buildLookups)
@@ -199,11 +223,11 @@ function mergeFileCoverages(coverages: FileCoverageData[]): FileCoverageData {
   for (const [key, branch] of Object.entries(merged.branchMap) as [string, BranchEntry][]) {
     const locKey = locationKey(branch.loc)
     const line = lineKey(branch.loc)
-    const baseCounts = merged.b[key] || []
     for (const lookup of allLookups) {
       const counts = lookup.branches.get(locKey) ?? lookup.branchesByLine.get(line)
       if (counts !== undefined) {
-        merged.b[key] = baseCounts.map((c: number, i: number) =>
+        const currentCounts = merged.b[key] || []
+        merged.b[key] = currentCounts.map((c: number, i: number) =>
           Math.max(c, counts[i] || 0)
         )
       }
@@ -216,11 +240,16 @@ function mergeFileCoverages(coverages: FileCoverageData[]): FileCoverageData {
 /**
  * Smart merge multiple coverage maps.
  *
- * This uses a "fewer items wins" strategy for structure selection,
- * which preserves the statement counts from the source without
- * import statement inflation.
+ * By default (preferUnion: true), uses "more items wins" strategy for structure selection,
+ * which gives you the union of all statement structures.
+ *
+ * When preferUnion is false (--normalize mode), uses "fewer items wins" strategy,
+ * which preserves the statement counts from the source without import statement inflation.
+ *
+ * @param coverageMaps - Array of coverage maps to merge
+ * @param preferUnion - If true (default), prefer source with more items; if false, prefer source without directives
  */
-export function smartMergeCoverage(coverageMaps: CoverageMapData[]): CoverageMapData {
+export function smartMergeCoverage(coverageMaps: CoverageMapData[], preferUnion: boolean = true): CoverageMapData {
   if (coverageMaps.length === 0) {
     return {}
   }
@@ -247,7 +276,7 @@ export function smartMergeCoverage(coverageMaps: CoverageMapData[]): CoverageMap
     if (fileCoverages.length === 1) {
       merged[file] = JSON.parse(JSON.stringify(fileCoverages[0]))
     } else {
-      merged[file] = mergeFileCoverages(fileCoverages)
+      merged[file] = mergeFileCoverages(fileCoverages, preferUnion)
     }
   }
 

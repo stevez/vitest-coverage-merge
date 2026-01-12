@@ -17,23 +17,23 @@ Arguments:
 
 Options:
   -o, --output     Output directory for merged coverage (required)
-  --no-normalize   Skip import/directive stripping (not recommended)
+  --normalize      Strip import statements and directives before merging
   -h, --help       Show this help message
   -v, --version    Show version
 
 Examples:
   vitest-coverage-merge coverage/unit coverage/component -o coverage/merged
   vitest-coverage-merge coverage/unit coverage/browser coverage/e2e -o coverage/all
+  vitest-coverage-merge coverage/unit coverage/component -o coverage/merged --normalize
 
-The tool automatically normalizes coverage by:
-  - Stripping import statements (counted differently in jsdom vs browser)
-  - Stripping 'use client'/'use server' directives
-  - Merging statement, branch, and function coverage
+The --normalize option strips:
+  - ESM import statements (counted differently in jsdom vs browser)
+  - 'use client'/'use server' directives
 `)
 }
 
 function printVersion(): void {
-  console.log('vitest-coverage-merge v0.1.0')
+  console.log('vitest-coverage-merge v0.2.0')
 }
 
 interface ParsedArgs {
@@ -49,7 +49,7 @@ function parseArgs(args: string[]): ParsedArgs {
   const result: ParsedArgs = {
     inputDirs: [],
     outputDir: null,
-    normalize: true,
+    normalize: false,
     help: false,
     version: false,
     error: null,
@@ -76,8 +76,8 @@ function parseArgs(args: string[]): ParsedArgs {
         return result
       }
       result.outputDir = args[i]
-    } else if (arg === '--no-normalize') {
-      result.normalize = false
+    } else if (arg === '--normalize') {
+      result.normalize = true
     } else if (arg.startsWith('-')) {
       result.error = `Unknown option: ${arg}`
       return result

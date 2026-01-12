@@ -63,7 +63,45 @@ describe('smartMergeCoverage', () => {
     expect(result['/path/to/file.ts'].s['1']).toBe(1)
   })
 
-  it('should prefer coverage without L1:0 directive', () => {
+  it('should prefer source with more items by default (union strategy)', () => {
+    // Unit test coverage has L1:0 directive statement (more items)
+    const unit: CoverageMapData = {
+      '/path/to/file.ts': {
+        path: '/path/to/file.ts',
+        statementMap: {
+          '0': { start: { line: 1, column: 0 }, end: { line: 1, column: 12 } }, // directive
+          '1': { start: { line: 2, column: 0 }, end: { line: 2, column: 10 } },
+        },
+        s: { '0': 1, '1': 1 },
+        fnMap: {},
+        f: {},
+        branchMap: {},
+        b: {},
+      } as FileCoverageData,
+    }
+
+    // Component coverage doesn't have L1:0 directive (fewer items)
+    const component: CoverageMapData = {
+      '/path/to/file.ts': {
+        path: '/path/to/file.ts',
+        statementMap: {
+          '0': { start: { line: 2, column: 0 }, end: { line: 2, column: 10 } },
+        },
+        s: { '0': 1 },
+        fnMap: {},
+        f: {},
+        branchMap: {},
+        b: {},
+      } as FileCoverageData,
+    }
+
+    const result = smartMergeCoverage([unit, component])
+
+    // Default is "more items wins" (union) - should use unit structure (2 statements)
+    expect(Object.keys(result['/path/to/file.ts'].statementMap).length).toBe(2)
+  })
+
+  it('should prefer source without directive when preferUnion is false', () => {
     // Unit test coverage has L1:0 directive statement
     const unit: CoverageMapData = {
       '/path/to/file.ts': {
@@ -95,9 +133,9 @@ describe('smartMergeCoverage', () => {
       } as FileCoverageData,
     }
 
-    const result = smartMergeCoverage([unit, component])
+    const result = smartMergeCoverage([unit, component], false) // preferUnion = false
 
-    // Should use component structure (without directive)
+    // With preferUnion=false, should prefer source without directive (1 statement)
     expect(Object.keys(result['/path/to/file.ts'].statementMap).length).toBe(1)
   })
 
